@@ -15,7 +15,9 @@ import {
   videoWatchEvents,
   LessonProgressStatus,
   RefundStatus,
+  UserRole,
 } from "~/db/schema";
+import type { Notification } from "~/lib/notifications.server";
 import { formatPrice } from "~/lib/utils";
 import {
   REFUND_COMPLETION_LIMIT,
@@ -351,7 +353,13 @@ export function getRefundOffer(
 export type Email = { to: string; subject: string; body: string };
 
 export type RaiseResult =
-  | { ok: true; refundRequestId: number; kind: PurchaseKind; email: Email }
+  | {
+      ok: true;
+      refundRequestId: number;
+      kind: PurchaseKind;
+      email: Email;
+      notifications: Notification[];
+    }
   | Failure;
 
 export function raiseRefundRequest(
@@ -387,10 +395,29 @@ export function raiseRefundRequest(
     .returning()
     .get();
 
+  // Every Platform Admin gets their own copy, so it stays unread for each of
+  // them until they read it.
+  const platformAdmins = db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(eq(users.role, UserRole.Admin))
+    .all();
+
+  const notifications: Notification[] = platformAdmins.map((admin) => ({
+    kind: "refund_request_raised",
+    recipient: admin,
+    actorId: buyer.id,
+    actorAvatarUrl: buyer.avatarUrl,
+    title: `${buyer.name} asked for a refund`,
+    body: `${buyer.name} raised a refund request for "${course.title}" (${formatPrice(purchase.amountPaid)}).`,
+    link: "/admin/refunds",
+  }));
+
   return {
     ok: true,
     refundRequestId: refundRequest.id,
     kind: kindOf(getSeats(db, purchase.id)),
+    notifications,
     email: {
       to: buyer.email,
       subject: `Refund requested — ${course.title}`,

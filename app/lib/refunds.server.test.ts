@@ -14,6 +14,7 @@ import {
   listTeamLicences,
   raiseRefundRequest,
 } from "./refunds.server";
+import { sendNotifications, type Notification } from "./notifications.server";
 
 type TestDb = ReturnType<typeof createTestDb>;
 
@@ -234,6 +235,68 @@ describe("raising a Refund Request", () => {
       ok: false,
       status: 403,
     });
+  });
+});
+
+describe("Notifications when a Refund Request is raised", () => {
+  function addPlatformAdmin(name: string) {
+    return db
+      .insert(schema.users)
+      .values({
+        name,
+        email: `${name.toLowerCase()}@example.com`,
+        role: UserRole.Admin,
+      })
+      .returning()
+      .get();
+  }
+
+  it("notifies each Platform Admin separately, linking to the refund review page", () => {
+    const secondAdmin = addPlatformAdmin("Quinn");
+    const purchase = buyForSelf(base.user.id);
+
+    const result = raiseRefundRequest(db, purchase.id, base.user.id, "Nope.", NOW);
+
+    if (!result.ok) throw new Error(result.error);
+    expect(
+      result.notifications.map((n) => ({
+        kind: n.kind,
+        recipientId: n.recipient.id,
+        actorId: n.actorId,
+        link: n.link,
+      }))
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          kind: "refund_request_raised",
+          recipientId: platformAdmin.id,
+          actorId: base.user.id,
+          link: "/admin/refunds",
+        },
+        {
+          kind: "refund_request_raised",
+          recipientId: secondAdmin.id,
+          actorId: base.user.id,
+          link: "/admin/refunds",
+        },
+      ])
+    );
+    expect(result.notifications).toHaveLength(2);
+  });
+
+  it("sends nothing to a Platform Admin who raised it on their own purchase", async () => {
+    const purchase = buyForSelf(platformAdmin.id);
+    const sent: Notification[] = [];
+
+    const result = raiseRefundRequest(db, purchase.id, platformAdmin.id, "Nope.", NOW);
+    if (!result.ok) throw new Error(result.error);
+    await sendNotifications(result.notifications, {
+      async send(notification) {
+        sent.push(notification);
+      },
+    });
+
+    expect(sent).toEqual([]);
   });
 });
 
