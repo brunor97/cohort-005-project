@@ -4,6 +4,11 @@ import { cn } from "~/lib/utils";
 import { UserRole } from "~/db/schema";
 import { UserAvatar } from "~/components/user-avatar";
 import {
+  NotificationsHeaderSlot,
+  NotificationsNavSlot,
+  NotificationsFooterSlot,
+} from "~/components/notifications-prototype"; // PROTOTYPE
+import {
   BookOpen,
   ChartColumn,
   LayoutDashboard,
@@ -140,9 +145,13 @@ export function Sidebar({
         <NavLink to="/" className="text-lg font-bold tracking-tight">
           Cadence
         </NavLink>
+        <div className="ml-auto">
+          <NotificationsHeaderSlot />
+        </div>
       </div>
 
       <nav className="flex-1 space-y-1 p-3">
+        <NotificationsNavSlot />
         {navItems
           .filter((item) => isVisible(item, currentUserRole))
           .map((item) => (
@@ -220,6 +229,7 @@ export function Sidebar({
       )}
 
       <div className="border-t border-sidebar-border p-3 space-y-1">
+        <NotificationsFooterSlot />
         <button
           onClick={toggleDarkMode}
           className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
