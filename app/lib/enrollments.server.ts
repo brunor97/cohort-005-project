@@ -1,16 +1,11 @@
 import { eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "~/db/schema";
-import { courses, users } from "~/db/schema";
+import { courses } from "~/db/schema";
+import { getUserSummary, type Queryable } from "~/lib/db.server";
 import type { Notification } from "~/lib/notifications.server";
 
 // ─── Enrollment Notifications ───
 // Server-only helpers about Enrollments. Every function takes the database
 // first, so tests can hand in an in-memory one (or a transaction).
-
-type Db = BetterSQLite3Database<typeof schema>;
-type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
-type Queryable = Db | Tx;
 
 /**
  * The `new_enrollment` Notification telling a course's Instructor that a
@@ -35,21 +30,13 @@ export function newEnrollmentNotification(
     .get();
   if (!course) throw new Error("Course not found");
 
-  const instructor = db
-    .select({ id: users.id, name: users.name })
-    .from(users)
-    .where(eq(users.id, course.instructorId))
-    .get();
-  const student = db
-    .select({ id: users.id, name: users.name, avatarUrl: users.avatarUrl })
-    .from(users)
-    .where(eq(users.id, enrollment.userId))
-    .get();
+  const instructor = getUserSummary(db, course.instructorId);
+  const student = getUserSummary(db, enrollment.userId);
   if (!instructor || !student) throw new Error("User not found");
 
   return {
     kind: "new_enrollment",
-    recipient: instructor,
+    recipient: { id: instructor.id, name: instructor.name },
     actorId: student.id,
     actorAvatarUrl: student.avatarUrl,
     title: `${student.name} enrolled on ${course.title}`,

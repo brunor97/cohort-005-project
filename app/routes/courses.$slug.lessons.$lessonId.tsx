@@ -13,6 +13,7 @@ import {
   deleteComment,
   editComment,
   getCommentById,
+  getCourseForLesson,
   postComment,
 } from "~/lib/comments.server";
 import { sendNotifications } from "~/lib/notifications.server";
@@ -314,23 +315,8 @@ function calculateWatchProgress(
   return Math.min(Math.round((maxPosition / videoDurationSeconds) * 100), 100);
 }
 
-function getCourseForLesson(lessonId: number) {
-  return db
-    .select({
-      courseId: courses.id,
-      courseTitle: courses.title,
-      courseSlug: courses.slug,
-      instructorId: courses.instructorId,
-    })
-    .from(lessons)
-    .innerJoin(modules, eq(lessons.moduleId, modules.id))
-    .innerJoin(courses, eq(modules.courseId, courses.id))
-    .where(eq(lessons.id, lessonId))
-    .get();
-}
-
 function getLessonThread(lessonId: number): ThreadComment[] {
-  const course = getCourseForLesson(lessonId);
+  const course = getCourseForLesson(db, lessonId);
   if (!course) return [];
 
   const rows = db

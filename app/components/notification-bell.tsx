@@ -97,38 +97,38 @@ function Feed() {
                 You're all caught up.
               </li>
             )}
-            {notifications?.map((n) => (
-              <li key={n.id}>
+            {notifications?.map((notification) => (
+              <li key={notification.id}>
                 <button
-                  onClick={() => openNotification(n)}
+                  onClick={() => openNotification(notification)}
                   className={cn(
                     "flex w-full gap-3 border-b px-4 py-3 text-left hover:bg-muted",
-                    !n.isRead && "bg-primary/5"
+                    !notification.isRead && "bg-primary/5"
                   )}
                 >
                   <span
                     className={cn(
                       "mt-3 size-2 shrink-0 rounded-full",
-                      n.isRead ? "bg-transparent" : "bg-primary"
+                      notification.isRead ? "bg-transparent" : "bg-primary"
                     )}
                   />
-                  <ActorAvatar url={n.avatar} />
+                  <ActorAvatar url={notification.avatar} />
                   <span
                     className={cn(
                       "min-w-0 flex-1",
-                      n.isRead && "text-muted-foreground"
+                      notification.isRead && "text-muted-foreground"
                     )}
                   >
                     <span
-                      className={cn("block text-sm", !n.isRead && "font-semibold")}
+                      className={cn("block text-sm", !notification.isRead && "font-semibold")}
                     >
-                      {n.subject}
+                      {notification.subject}
                     </span>
                     <span className="line-clamp-2 block text-xs text-muted-foreground">
-                      {n.body}
+                      {notification.body}
                     </span>
                     <span className="mt-1 block text-[11px] text-muted-foreground">
-                      {timeAgo(n.createdAt)}
+                      {timeAgo(notification.createdAt)}
                     </span>
                   </span>
                 </button>

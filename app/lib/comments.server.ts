@@ -1,8 +1,7 @@
 import { eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "~/db/schema";
 import { comments, courses, lessons, modules, users, UserRole } from "~/db/schema";
 import { MIN_COMMENT_LENGTH, MAX_COMMENT_LENGTH } from "~/lib/comments";
+import { getUserSummary, type Db } from "~/lib/db.server";
 import type { Notification } from "~/lib/notifications.server";
 
 // ─── Lesson comments ───
@@ -11,14 +10,16 @@ import type { Notification } from "~/lib/notifications.server";
 // deleting cause none.
 //
 // Every function takes the database first, so tests can hand in an in-memory
-// one. Uses positional parameters (project convention).
+// one.
 
-export type Db = BetterSQLite3Database<typeof schema>;
 export type Comment = typeof comments.$inferSelect;
 
-function getCourseForLesson(db: Db, lessonId: number) {
+/** The course a lesson belongs to, with the lesson's title. */
+export function getCourseForLesson(db: Db, lessonId: number) {
   return db
     .select({
+      courseId: courses.id,
+      courseTitle: courses.title,
       courseSlug: courses.slug,
       instructorId: courses.instructorId,
       lessonTitle: lessons.title,
@@ -30,7 +31,8 @@ function getCourseForLesson(db: Db, lessonId: number) {
     .get();
 }
 
-function getUser(db: Db, userId: number) {
+/** The comment author, with the role that decides whether they are staff. */
+function getAuthor(db: Db, userId: number) {
   return db
     .select({
       id: users.id,
@@ -104,14 +106,14 @@ export function postComment(
     .returning()
     .get();
 
-  const author = getUser(db, userId);
+  const author = getAuthor(db, userId);
   const notifications: Notification[] = [];
   const link = `/courses/${course.courseSlug}/lessons/${lessonId}#comments`;
 
   if (author && !parent) {
     const isStaff =
       author.id === course.instructorId || author.role === UserRole.Admin;
-    const instructor = getUser(db, course.instructorId);
+    const instructor = getUserSummary(db, course.instructorId);
     if (!isStaff && instructor) {
       notifications.push({
         kind: "new_question",
@@ -127,7 +129,7 @@ export function postComment(
 
   if (author && parent) {
     // A self-reply is returned too; sendNotifications drops it.
-    const parentAuthor = getUser(db, parent.userId);
+    const parentAuthor = getUserSummary(db, parent.userId);
     if (parentAuthor) {
       notifications.push({
         kind: "comment_reply",
