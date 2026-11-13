@@ -1,7 +1,5 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { alias } from "drizzle-orm/sqlite-core";
-import * as schema from "~/db/schema";
 import {
   coupons,
   courses,
@@ -17,6 +15,7 @@ import {
   RefundStatus,
   UserRole,
 } from "~/db/schema";
+import { getUserSummary, type Db, type Queryable } from "~/lib/db.server";
 import type { Notification } from "~/lib/notifications.server";
 import { formatPrice } from "~/lib/utils";
 import {
@@ -32,11 +31,7 @@ import {
 // language and docs/adr/0001–0004 for why it works the way it does.
 //
 // Every function takes the database first, so tests can hand in an in-memory
-// one. Uses positional parameters (project convention).
-
-export type Db = BetterSQLite3Database<typeof schema>;
-type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
-type Queryable = Db | Tx;
+// one.
 
 type Purchase = typeof purchases.$inferSelect;
 type Seat = typeof coupons.$inferSelect;
@@ -90,6 +85,26 @@ export type PurchaseKind = "individual_purchase" | "team_licence";
 function kindOf(seats: Seat[]): PurchaseKind {
   return seats.length > 0 ? "team_licence" : "individual_purchase";
 }
+
+/**
+ * How the buyer is told about each kind of Purchase: what to call it, where it
+ * lives in the app, and what an approved refund ends.
+ */
+const PURCHASE_KIND_WORDING: Record<
+  PurchaseKind,
+  { label: string; link: string; approvalEnds: string }
+> = {
+  individual_purchase: {
+    label: "purchase",
+    link: "/settings",
+    approvalEnds: "Your Enrollment in the course has ended.",
+  },
+  team_licence: {
+    label: "Team Licence",
+    link: "/team",
+    approvalEnds: "Its Unclaimed Seats can no longer be claimed.",
+  },
+};
 
 function getRefundRequestWithStatus(
   db: Queryable,
@@ -672,7 +687,7 @@ export function approveRefundRequest(
           and(eq(coupons.purchaseId, purchase.id), isNull(coupons.redeemedAt))
         )
         .run();
-      ended = "Its Unclaimed Seats can no longer be claimed.";
+      ended = PURCHASE_KIND_WORDING.team_licence.approvalEnds;
     } else {
       const claimedSeat = tx
         .select({ id: coupons.id })
@@ -695,7 +710,7 @@ export function approveRefundRequest(
             )
           )
           .run();
-        ended = "Your Enrollment in the course has ended.";
+        ended = PURCHASE_KIND_WORDING.individual_purchase.approvalEnds;
       } else {
         ended = "You keep your Enrollment through your team's Seat.";
       }
@@ -712,17 +727,19 @@ export function approveRefundRequest(
       .where(eq(refunds.id, refundRequestId))
       .run();
 
+    const notification = buildDecisionNotification(
+      tx,
+      purchase,
+      kind,
+      RefundStatus.Approved,
+      platformAdminId,
+      ended
+    );
+
     return {
       ok: true,
       email: buildDecisionEmail(tx, purchase, RefundStatus.Approved, note),
-      notifications: buildDecisionNotifications(
-        tx,
-        purchase,
-        kind,
-        RefundStatus.Approved,
-        platformAdminId,
-        ended
-      ),
+      notifications: notification ? [notification] : [],
     };
   });
 }
@@ -763,6 +780,15 @@ export function declineRefundRequest(
       .where(eq(refunds.id, refundRequestId))
       .run();
 
+    const notification = buildDecisionNotification(
+      tx,
+      found.purchase,
+      kindOf(getSeats(tx, found.purchase.id)),
+      RefundStatus.Declined,
+      platformAdminId,
+      "You still have everything you bought."
+    );
+
     return {
       ok: true,
       email: buildDecisionEmail(
@@ -771,14 +797,7 @@ export function declineRefundRequest(
         RefundStatus.Declined,
         trimmedNote
       ),
-      notifications: buildDecisionNotifications(
-        tx,
-        found.purchase,
-        kindOf(getSeats(tx, found.purchase.id)),
-        RefundStatus.Declined,
-        platformAdminId,
-        "You still have everything you bought."
-      ),
+      notifications: notification ? [notification] : [],
     };
   });
 }
@@ -790,20 +809,16 @@ export function declineRefundRequest(
  * means for them. A Platform Admin deciding their own Refund Request is
  * dropped by sendNotifications.
  */
-function buildDecisionNotifications(
+function buildDecisionNotification(
   db: Queryable,
   purchase: Purchase,
   kind: PurchaseKind,
   decision: RefundStatus.Approved | RefundStatus.Declined,
   platformAdminId: number,
   detail: string
-): Notification[] {
-  const buyer = db
-    .select({ id: users.id, name: users.name })
-    .from(users)
-    .where(eq(users.id, purchase.userId))
-    .get();
-  if (!buyer) return [];
+): Notification | null {
+  const buyer = getUserSummary(db, purchase.userId);
+  if (!buyer) return null;
 
   const course = db
     .select({ title: courses.title })
@@ -811,21 +826,19 @@ function buildDecisionNotifications(
     .where(eq(courses.id, purchase.courseId))
     .get();
   const courseTitle = course?.title ?? "your course";
-  const what = kind === "team_licence" ? "Team Licence" : "purchase";
+  const { label, link } = PURCHASE_KIND_WORDING[kind];
   const approved = decision === RefundStatus.Approved;
 
-  return [
-    {
-      kind: approved ? "refund_approved" : "refund_declined",
-      recipient: buyer,
-      actorId: platformAdminId,
-      title: `Refund ${decision} — ${courseTitle}`,
-      body: approved
-        ? `Your refund for your ${what} of "${courseTitle}" (${formatPrice(purchase.amountPaid)}) was approved. ${detail}`
-        : `Your refund request for your ${what} of "${courseTitle}" was declined. ${detail}`,
-      link: kind === "team_licence" ? "/team" : "/settings",
-    },
-  ];
+  return {
+    kind: approved ? "refund_approved" : "refund_declined",
+    recipient: { id: buyer.id, name: buyer.name },
+    actorId: platformAdminId,
+    title: `Refund ${decision} — ${courseTitle}`,
+    body: approved
+      ? `Your refund for your ${label} of "${courseTitle}" (${formatPrice(purchase.amountPaid)}) was approved. ${detail}`
+      : `Your refund request for your ${label} of "${courseTitle}" was declined. ${detail}`,
+    link,
+  };
 }
 
 /** The email the buyer gets once their Refund Request is decided. */
