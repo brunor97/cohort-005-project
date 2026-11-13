@@ -1,14 +1,14 @@
 import { and, eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "~/db/schema";
 import {
   coupons,
+  courses,
   enrollments,
   purchases,
   teamMembers,
   TeamMemberRole,
   users,
 } from "~/db/schema";
+import { getUserSummary, type Db, type Tx } from "~/lib/db.server";
 import { newEnrollmentNotification } from "~/lib/enrollments.server";
 import { getSeatAvailability } from "~/lib/refunds.server";
 import type { Notification } from "~/lib/notifications.server";
@@ -18,9 +18,10 @@ import type { Notification } from "~/lib/notifications.server";
 // Enrollment, and the Notifications it causes. The route sends those after
 // the commit. Takes the database first, so tests can hand in an in-memory one.
 
-type Db = BetterSQLite3Database<typeof schema>;
-type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
-
+export const SEAT_NOT_FOUND = "Seat not found";
+export const SEAT_ALREADY_CLAIMED = "This Seat has already been claimed";
+export const SEAT_WRONG_COUNTRY =
+  "This Seat can only be claimed from the same country as the purchaser";
 export const SEAT_ON_HOLD =
   "This seat can't be claimed right now. Ask the person who shared it with you.";
 export const SEAT_REFUNDED =
@@ -42,11 +43,11 @@ export function claimSeat(
   return db.transaction((tx): ClaimSeatResult => {
     const coupon = tx.select().from(coupons).where(eq(coupons.code, code)).get();
     if (!coupon) {
-      return { ok: false, error: "Coupon not found" };
+      return { ok: false, error: SEAT_NOT_FOUND };
     }
 
     if (coupon.redeemedByUserId !== null) {
-      return { ok: false, error: "Coupon has already been redeemed" };
+      return { ok: false, error: SEAT_ALREADY_CLAIMED };
     }
 
     const availability = getSeatAvailability(tx, coupon);
@@ -77,11 +78,7 @@ export function claimSeat(
       .where(eq(purchases.id, coupon.purchaseId))
       .get();
     if (purchase?.country && purchase.country !== country) {
-      return {
-        ok: false,
-        error:
-          "This coupon can only be redeemed from the same country as the purchaser",
-      };
+      return { ok: false, error: SEAT_WRONG_COUNTRY };
     }
 
     const seat = tx
@@ -116,7 +113,7 @@ function seatClaimedNotification(
   seat: typeof coupons.$inferSelect,
   claimantId: number
 ): Notification | undefined {
-  const admin = tx
+  const teamAdmin = tx
     .select({ id: users.id, name: users.name })
     .from(teamMembers)
     .innerJoin(users, eq(users.id, teamMembers.userId))
@@ -127,23 +124,19 @@ function seatClaimedNotification(
       )
     )
     .get();
-  if (!admin) return undefined;
+  if (!teamAdmin) return undefined;
 
-  const claimant = tx
-    .select({ id: users.id, name: users.name, avatarUrl: users.avatarUrl })
-    .from(users)
-    .where(eq(users.id, claimantId))
-    .get();
+  const claimant = getUserSummary(tx, claimantId);
   const course = tx
-    .select({ title: schema.courses.title })
-    .from(schema.courses)
-    .where(eq(schema.courses.id, seat.courseId))
+    .select({ title: courses.title })
+    .from(courses)
+    .where(eq(courses.id, seat.courseId))
     .get();
   if (!claimant || !course) throw new Error("Seat claim references missing data");
 
   return {
     kind: "seat_claimed",
-    recipient: admin,
+    recipient: teamAdmin,
     actorId: claimant.id,
     actorAvatarUrl: claimant.avatarUrl,
     title: `${claimant.name} claimed a Seat on ${course.title}`,
