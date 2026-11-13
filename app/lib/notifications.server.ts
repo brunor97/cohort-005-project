@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Novu } from "@novu/api";
@@ -126,4 +126,44 @@ export async function sendNotifications(
       }
     })
   );
+}
+
+// ─── Feed credentials ───
+
+export type FeedCredentials = {
+  subscriberId: string;
+  /** HMAC-SHA256 of subscriberId keyed with NOVU_SECRET_KEY. Novu enforces it. */
+  subscriberHash: string;
+  /** Public: safe to send to the browser. */
+  applicationIdentifier: string;
+};
+
+export type NovuKeys = {
+  secretKey?: string;
+  applicationIdentifier?: string;
+};
+
+/**
+ * What the browser needs to open a user's Novu feed. Server only: it signs
+ * with the secret key. Returns nothing without a user or without the keys,
+ * and then there's no bell. See docs/adr/0013.
+ */
+export function feedCredentials(
+  user: { id: number } | null | undefined,
+  keys: NovuKeys = {
+    secretKey: process.env.NOVU_SECRET_KEY,
+    applicationIdentifier: process.env.NOVU_APPLICATION_IDENTIFIER,
+  }
+): FeedCredentials | undefined {
+  const { secretKey, applicationIdentifier } = keys;
+  if (!user || !secretKey || !applicationIdentifier) return undefined;
+
+  const subscriberId = String(user.id);
+  return {
+    subscriberId,
+    subscriberHash: createHmac("sha256", secretKey)
+      .update(subscriberId)
+      .digest("hex"),
+    applicationIdentifier,
+  };
 }

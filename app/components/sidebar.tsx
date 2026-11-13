@@ -3,6 +3,8 @@ import { useState, useEffect } from "react";
 import { cn } from "~/lib/utils";
 import { UserRole } from "~/db/schema";
 import { UserAvatar } from "~/components/user-avatar";
+import { NotificationBell } from "~/components/notification-bell";
+import type { FeedCredentials } from "~/lib/notifications.server";
 import {
   BookOpen,
   ChartColumn,
@@ -41,6 +43,7 @@ interface SidebarProps {
   currentUser: CurrentUser | null;
   recentCourses?: RecentCourse[];
   isTeamAdmin?: boolean;
+  feedCredentials?: FeedCredentials;
 }
 
 interface NavItem {
@@ -117,6 +120,7 @@ export function Sidebar({
   currentUser,
   recentCourses = [],
   isTeamAdmin = false,
+  feedCredentials,
 }: SidebarProps) {
   const currentUserRole = currentUser?.role ?? null;
   const [isDark, setIsDark] = useState(false);
@@ -140,6 +144,11 @@ export function Sidebar({
         <NavLink to="/" className="text-lg font-bold tracking-tight">
           Cadence
         </NavLink>
+        {feedCredentials && (
+          <div className="ml-auto">
+            <NotificationBell credentials={feedCredentials} />
+          </div>
+        )}
       </div>
 
       <nav className="flex-1 space-y-1 p-3">

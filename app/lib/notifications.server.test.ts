@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  feedCredentials,
   novuNotificationTransport,
   outboxNotificationTransport,
   sendNotifications,
@@ -115,5 +116,39 @@ describe("sendNotifications", () => {
     ).resolves.toBeUndefined();
 
     expect(log).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("feedCredentials", () => {
+  const keys = {
+    secretKey: "test-secret",
+    applicationIdentifier: "app-id-123",
+  };
+
+  it("signs the subscriberId with HMAC-SHA256 keyed by the secret key", () => {
+    // Expected hash computed independently:
+    //   printf '42' | openssl dgst -sha256 -hmac 'test-secret'
+    expect(feedCredentials({ id: 42 }, keys)).toEqual({
+      subscriberId: "42",
+      subscriberHash:
+        "0c448d9ba9697edc6e65d581ad07fba78e907baad3c1e452d3ead109363f97bf",
+      applicationIdentifier: "app-id-123",
+    });
+  });
+
+  it("returns nothing when nobody is signed in", () => {
+    expect(feedCredentials(null, keys)).toBeUndefined();
+  });
+
+  it("returns nothing without a secret key", () => {
+    expect(
+      feedCredentials({ id: 42 }, { applicationIdentifier: "app-id-123" })
+    ).toBeUndefined();
+  });
+
+  it("returns nothing without an application identifier", () => {
+    expect(
+      feedCredentials({ id: 42 }, { secretKey: "test-secret" })
+    ).toBeUndefined();
   });
 });
