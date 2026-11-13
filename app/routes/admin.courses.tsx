@@ -138,9 +138,7 @@ export async function action({ request }: Route.ActionArgs) {
       parsed.data.status,
       currentUser.id
     );
-    if (!result.ok) {
-      return data({ error: result.error }, { status: result.status });
-    }
+    if (!result.ok) throw data("Course not found", { status: 404 });
     // Never throws: a Novu outage must not fail the status change.
     await sendNotifications(result.notifications);
     return { success: true };

@@ -7,7 +7,12 @@ import { getCurrentUserId } from "~/lib/session";
 import { resolveCountry } from "~/lib/country.server";
 import { parseParams, parseFormData } from "~/lib/validation";
 import { getSeatAvailability } from "~/lib/refunds.server";
-import { claimSeat, SEAT_ON_HOLD, SEAT_REFUNDED } from "~/lib/seats.server";
+import {
+  claimSeat,
+  SEAT_NOT_FOUND,
+  SEAT_ON_HOLD,
+  SEAT_REFUNDED,
+} from "~/lib/seats.server";
 import { sendNotifications } from "~/lib/notifications.server";
 import { Card, CardContent } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
@@ -58,7 +63,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   const coupon = getCouponByCode(code);
   if (!coupon) {
-    throw data("Coupon not found.", { status: 404 });
+    throw data(SEAT_NOT_FOUND, { status: 404 });
   }
 
   const currentUserId = await getCurrentUserId(request);

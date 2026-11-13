@@ -1,7 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "~/db/schema";
 import { courses, enrollments, purchases } from "~/db/schema";
+import type { Db } from "~/lib/db.server";
 import { newEnrollmentNotification } from "~/lib/enrollments.server";
 import type { Notification } from "~/lib/notifications.server";
 
@@ -9,8 +8,6 @@ import type { Notification } from "~/lib/notifications.server";
 // A Student buying a course for themselves: the Purchase, its Enrollment, and
 // the Notifications it causes. The route sends those after the commit.
 // Takes the database first, so tests can hand in an in-memory one.
-
-type Db = BetterSQLite3Database<typeof schema>;
 
 export type IndividualPurchaseResult = {
   purchase: typeof purchases.$inferSelect;

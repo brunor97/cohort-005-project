@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { createTestDb, seedBaseData } from "~/test/setup";
 import * as schema from "~/db/schema";
-import { claimSeat } from "./seats.server";
+import {
+  claimSeat,
+  SEAT_ALREADY_CLAIMED,
+  SEAT_REFUNDED,
+  SEAT_WRONG_COUNTRY,
+} from "./seats.server";
 import { sendNotifications, type Notification } from "./notifications.server";
 
 type TestDb = ReturnType<typeof createTestDb>;
@@ -113,7 +118,7 @@ describe("claiming a Seat", () => {
 
     const result = claimSeat(db, { code: SEAT_CODE, userId: teamAdmin.id, country: "" });
 
-    expect(result).toEqual({ ok: false, error: "Coupon has already been redeemed" });
+    expect(result).toEqual({ ok: false, error: SEAT_ALREADY_CLAIMED });
   });
 
   it("refuses a Seat whose Team Licence has been refunded", () => {
@@ -125,10 +130,7 @@ describe("claiming a Seat", () => {
 
     const result = claimSeat(db, { code: SEAT_CODE, userId: base.user.id, country: "" });
 
-    expect(result).toEqual({
-      ok: false,
-      error: "This seat is no longer available. Ask the person who shared it with you.",
-    });
+    expect(result).toEqual({ ok: false, error: SEAT_REFUNDED });
   });
 
   it("refuses a claim from outside the purchaser's country", () => {
@@ -136,6 +138,6 @@ describe("claiming a Seat", () => {
 
     const result = claimSeat(db, { code: SEAT_CODE, userId: base.user.id, country: "FR" });
 
-    expect(result.ok).toBe(false);
+    expect(result).toEqual({ ok: false, error: SEAT_WRONG_COUNTRY });
   });
 });
