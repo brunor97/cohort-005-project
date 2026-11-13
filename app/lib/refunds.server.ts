@@ -595,7 +595,9 @@ export function listTeamLicences(db: Queryable, buyerId: number, now: Date) {
 
 // ─── Deciding a Refund Request ───
 
-export type DecisionResult = { ok: true; email: Email } | Failure;
+export type DecisionResult =
+  | { ok: true; email: Email; notifications: Notification[] }
+  | Failure;
 
 function findOpenRefundRequest(
   tx: Queryable,
@@ -651,8 +653,10 @@ export function approveRefundRequest(
 
     const { purchase } = found;
     const seats = getSeats(tx, purchase.id);
+    const kind = kindOf(seats);
+    let ended: string;
 
-    if (kindOf(seats) === "team_licence") {
+    if (kind === "team_licence") {
       if (seats.some(isClaimed)) {
         return {
           ok: false,
@@ -668,6 +672,7 @@ export function approveRefundRequest(
           and(eq(coupons.purchaseId, purchase.id), isNull(coupons.redeemedAt))
         )
         .run();
+      ended = "Its Unclaimed Seats can no longer be claimed.";
     } else {
       const claimedSeat = tx
         .select({ id: coupons.id })
@@ -690,6 +695,9 @@ export function approveRefundRequest(
             )
           )
           .run();
+        ended = "Your Enrollment in the course has ended.";
+      } else {
+        ended = "You keep your Enrollment through your team's Seat.";
       }
     }
 
@@ -707,6 +715,14 @@ export function approveRefundRequest(
     return {
       ok: true,
       email: buildDecisionEmail(tx, purchase, RefundStatus.Approved, note),
+      notifications: buildDecisionNotifications(
+        tx,
+        purchase,
+        kind,
+        RefundStatus.Approved,
+        platformAdminId,
+        ended
+      ),
     };
   });
 }
@@ -755,8 +771,61 @@ export function declineRefundRequest(
         RefundStatus.Declined,
         trimmedNote
       ),
+      notifications: buildDecisionNotifications(
+        tx,
+        found.purchase,
+        kindOf(getSeats(tx, found.purchase.id)),
+        RefundStatus.Declined,
+        platformAdminId,
+        "You still have everything you bought."
+      ),
     };
   });
+}
+
+/**
+ * The Notification the buyer gets once their Refund Request is decided. It
+ * links to where the Purchase lives: the settings page for an Individual
+ * Purchase, the team page for a Team Licence. `detail` says what the decision
+ * means for them. A Platform Admin deciding their own Refund Request is
+ * dropped by sendNotifications.
+ */
+function buildDecisionNotifications(
+  db: Queryable,
+  purchase: Purchase,
+  kind: PurchaseKind,
+  decision: RefundStatus.Approved | RefundStatus.Declined,
+  platformAdminId: number,
+  detail: string
+): Notification[] {
+  const buyer = db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(eq(users.id, purchase.userId))
+    .get();
+  if (!buyer) return [];
+
+  const course = db
+    .select({ title: courses.title })
+    .from(courses)
+    .where(eq(courses.id, purchase.courseId))
+    .get();
+  const courseTitle = course?.title ?? "your course";
+  const what = kind === "team_licence" ? "Team Licence" : "purchase";
+  const approved = decision === RefundStatus.Approved;
+
+  return [
+    {
+      kind: approved ? "refund_approved" : "refund_declined",
+      recipient: buyer,
+      actorId: platformAdminId,
+      title: `Refund ${decision} — ${courseTitle}`,
+      body: approved
+        ? `Your refund for your ${what} of "${courseTitle}" (${formatPrice(purchase.amountPaid)}) was approved. ${detail}`
+        : `Your refund request for your ${what} of "${courseTitle}" was declined. ${detail}`,
+      link: kind === "team_licence" ? "/team" : "/settings",
+    },
+  ];
 }
 
 /** The email the buyer gets once their Refund Request is decided. */

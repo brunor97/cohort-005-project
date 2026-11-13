@@ -22,6 +22,7 @@ import {
 } from "~/lib/refunds.server";
 import { RULE_BREAK_LABELS } from "~/lib/refund-rules";
 import { sendEmail } from "~/lib/mailer.server";
+import { sendNotifications } from "~/lib/notifications.server";
 
 const refundFilterSchema = z
   .nativeEnum(RefundStatus)
@@ -128,6 +129,8 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   await sendEmail(result.email);
+  // Never throws: a Novu outage must not fail the decision.
+  await sendNotifications(result.notifications);
 
   return {
     success: true,
