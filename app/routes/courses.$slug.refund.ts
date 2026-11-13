@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { parseFormData, parseParams } from "~/lib/validation";
 import { raiseRefundRequest } from "~/lib/refunds.server";
 import { sendEmail } from "~/lib/mailer.server";
+import { sendNotifications } from "~/lib/notifications.server";
 
 const refundParamsSchema = z.object({
   slug: z.string().min(1),
@@ -73,6 +74,8 @@ export async function action({ params, request }: Route.ActionArgs) {
   }
 
   await sendEmail(result.email);
+  // Never throws: a Novu outage must not fail the Refund Request.
+  await sendNotifications(result.notifications);
 
   return redirect(result.kind === "team_licence" ? "/team" : "/settings");
 }
