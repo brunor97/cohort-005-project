@@ -96,5 +96,9 @@ _Avoid_: Watch cap, Viewing threshold
 ### Notifications
 
 **Notification**:
-A message Cadence shows one person inside the app about something that happened that concerns them, which they can read and dismiss. Every Notification is for a single recipient; there are no broadcasts.
+A message Cadence shows one person inside the app about something that happened that concerns them. Every Notification is for a single recipient; there are no broadcasts. A Notification is unread until its recipient opens it (or marks everything as read); after that it is read. Reading is the only way to dismiss one.
 _Avoid_: Alert, Message, Activity
+
+**Unread Notification**:
+A Notification its recipient hasn't opened yet. Unread Notifications are what the count on the bell shows.
+_Avoid_: New, Unseen
