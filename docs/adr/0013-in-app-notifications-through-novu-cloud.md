@@ -1,6 +1,6 @@
 # In-app Notifications go through Novu Cloud, with content written in Cadence
 
-Cadence sends in-app Notifications through Novu Cloud (hosted) on its free tier. Every Notification goes through **one generic in-app workflow**: Cadence passes the title, body and link in the trigger payload, so the content lives in Cadence's code next to the event that causes it, the same way email bodies already do. We chose Novu for its code-first content, the cheapest paid tier we could verify ($30/mo), a React inbox with headless hooks, and a feed that works with a public identifier during development (HMAC is added for production).
+Cadence sends in-app Notifications through Novu Cloud (hosted) on its free tier. Every Notification goes through **one generic in-app workflow**: Cadence passes the title, body and link in the trigger payload, so the content lives in Cadence's code next to the event that causes it, the same way email bodies already do. We chose Novu for its code-first content, the cheapest paid tier we could verify ($30/mo), a React inbox with headless hooks, and a React feed we can lock to its recipient with an HMAC `subscriberHash`, computed on the server.
 
 ## Considered Options
 
@@ -16,3 +16,4 @@ See the research: `docs/research/notification-providers.md` on the `research/not
 - Novu's free tier caps workflows at about 5. That doesn't bind us, because each kind of Notification is a payload variant rather than its own workflow. Don't "fix" this by creating one workflow per Notification.
 - Novu's free tier keeps inbox feed items for 30 days, so older Notifications disappear from the feed.
 - Novu has no offline emulator, so tests and local dev must fake the sender at Cadence's own boundary.
+- Each user's Novu subscriberId is their Cadence user id as a string. Those ids are sequential and easy to guess, so HMAC feed authentication is on in every Novu environment, Development included. Don't turn it off to make local setup easier.
