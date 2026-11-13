@@ -5,6 +5,8 @@ import { z } from "zod";
 import type { Route } from "./+types/admin.courses";
 import { getCurrentUserId } from "~/lib/session";
 import { parseFormData } from "~/lib/validation";
+import { changeCourseStatus } from "~/lib/courses.server";
+import { sendNotifications } from "~/lib/notifications.server";
 import {
   UserRole,
   CourseStatus,
@@ -73,15 +75,6 @@ function getEnrollmentCountForCourse(courseId: number) {
   return result?.count ?? 0;
 }
 
-function updateCourseStatus(id: number, status: CourseStatus) {
-  return db
-    .update(courses)
-    .set({ status, updatedAt: new Date().toISOString() })
-    .where(eq(courses.id, id))
-    .returning()
-    .get();
-}
-
 export function meta() {
   return [
     { title: "Manage Courses — Cadence" },
@@ -139,7 +132,17 @@ export async function action({ request }: Route.ActionArgs) {
   const { intent } = parsed.data;
 
   if (intent === "update-status") {
-    updateCourseStatus(parsed.data.courseId, parsed.data.status);
+    const result = changeCourseStatus(
+      db,
+      parsed.data.courseId,
+      parsed.data.status,
+      currentUser.id
+    );
+    if (!result.ok) {
+      return data({ error: result.error }, { status: result.status });
+    }
+    // Never throws: a Novu outage must not fail the status change.
+    await sendNotifications(result.notifications);
     return { success: true };
   }
 
