@@ -58,11 +58,26 @@ describe("a Platform Admin changing a course's status", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("sends nothing when the status is set to the one it already has", () => {
+    changeCourseStatus(db, base.course.id, CourseStatus.Archived, platformAdmin.id);
+
+    const result = changeCourseStatus(
+      db,
+      base.course.id,
+      CourseStatus.Archived,
+      platformAdmin.id
+    );
+
+    if (!result.ok) throw new Error(result.error);
+    expect(result.course.status).toBe(CourseStatus.Archived);
+    expect(result.notifications).toEqual([]);
+  });
+
   it("sends nothing to an Instructor who is the Platform Admin changing it", async () => {
     const result = changeCourseStatus(
       db,
       base.course.id,
-      CourseStatus.Draft,
+      CourseStatus.Archived,
       base.instructor.id
     );
     if (!result.ok) throw new Error(result.error);
